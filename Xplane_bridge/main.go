@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -189,6 +191,7 @@ func main() {
 	go func() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/api/fromA/task", Aapi.ReceiveTaskHandler)
+		mux.HandleFunc("/api/fromA/stop", Aapi.ReceiveStopHandler)
 
 		handler := cors(mux)
 
@@ -212,28 +215,6 @@ func main() {
 	fmt.Printf("X-Plane 版本: %s\n", xCap.XPlane.Version)
 	fmt.Printf("支持的 API 版本: %v\n", xCap.API.Versions)
 	fmt.Println()
-
-	// 2.1 注册“动作选择时”的 X-Plane 场景应用钩子
-	Aapi.RegisterActionHook(func(actionIndex int) error {
-		if Aapi.CurrentTask == nil {
-			return fmt.Errorf("CurrentTask 为空，尚未收到甲方A任务")
-		}
-
-		sc := buildScenarioFromTask(Aapi.CurrentTask)
-		if sc == nil {
-			return fmt.Errorf("无法从任务构建场景")
-		}
-
-		if actionIndex >= 0 && actionIndex < len(Aapi.CurrentTask.TrainTaskActions) {
-			act := Aapi.CurrentTask.TrainTaskActions[actionIndex]
-			fmt.Printf("▶ 为动作 [%d] %s 应用场景（高度/姿态/时间）...\n",
-				actionIndex+1, act.Name)
-		} else {
-			fmt.Printf("▶ 为动作 [%d] 应用场景（高度/姿态/时间）...\n", actionIndex+1)
-		}
-
-		return client.ApplyScenario(ctx, sc)
-	})
 
 	// 3. 定义 27 个字段（甲方字段名 → X-Plane DataRef）
 	idx0 := 0
@@ -294,10 +275,13 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("创建 CSV 文件失败: %w", err))
 	}
-	defer csvFile.Close()
+	defer func() {
+		_ = csvFile.Close()
+	}()
 
 	csvWriter := csv.NewWriter(csvFile)
 	defer csvWriter.Flush()
+	var csvMu sync.Mutex
 
 	// CSV 表头：timestamp_ms + 27 个字段 key
 	header := make([]string, 0, len(fields)+1)
@@ -311,6 +295,44 @@ func main() {
 
 	fmt.Println("CSV 记录已开启，输出文件: telemetry.csv")
 
+	var telemetryEnabled atomic.Bool
+	telemetryEnabled.Store(false)
+
+	// 2.1 注册“任务收到时”的 X-Plane 场景应用钩子
+	Aapi.RegisterTaskHook(func(task *Aapi.TrainTaskRecordDetail) error {
+		if task == nil {
+			return fmt.Errorf("任务为空，无法应用场景")
+		}
+
+		sc := buildScenarioFromTask(task)
+		if sc == nil {
+			return fmt.Errorf("无法从任务构建场景")
+		}
+
+		fmt.Printf("▶ 收到任务，应用场景（高度/姿态/时间）...\n")
+		if err := client.ApplyScenario(ctx, sc); err != nil {
+			return err
+		}
+
+		telemetryEnabled.Store(true)
+		return nil
+	})
+
+	Aapi.RegisterStopHook(func() error {
+		telemetryEnabled.Store(false)
+
+		csvMu.Lock()
+		defer csvMu.Unlock()
+		csvWriter.Flush()
+		if err := csvWriter.Error(); err != nil {
+			return fmt.Errorf("刷新 CSV 失败: %w", err)
+		}
+		if err := csvFile.Close(); err != nil {
+			return fmt.Errorf("关闭 CSV 文件失败: %w", err)
+		}
+		return nil
+	})
+
 	// 6. 订阅 Telemetry 数据流（10Hz）
 	fmt.Println("开始订阅 Telemetry 数据流...")
 	ch, err := client.SubscribeTelemetry(ctx, fields)
@@ -322,6 +344,10 @@ func main() {
 
 	// 7. 主循环：每一帧 → 单位转换 → UDP → CSV
 	for sample := range ch {
+		if !telemetryEnabled.Load() {
+			continue
+		}
+
 		normalized := normalizeSample(sample)
 
 		// 7.1 UDP 推流
@@ -339,10 +365,12 @@ func main() {
 			row = append(row, strconv.FormatFloat(v, 'f', 6, 64))
 		}
 
+		csvMu.Lock()
 		if err := csvWriter.Write(row); err != nil {
 			fmt.Printf("写入 CSV 行失败: %v\n", err)
 		}
 		csvWriter.Flush()
+		csvMu.Unlock()
 	}
 
 	fmt.Println("程序结束。")
