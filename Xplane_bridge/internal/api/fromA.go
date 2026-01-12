@@ -177,6 +177,26 @@ func ReceiveStopHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("================================")
 	}
 
+	var payload struct {
+		Type int `json:"type"`
+	}
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &payload); err != nil {
+			http.Error(w, "invalid stop json", http.StatusBadRequest)
+			return
+		}
+	}
+
+	if payload.Type != 4 {
+		w.Header().Set("Content-Type", "application/json")
+		resp := map[string]any{
+			"code": 0,
+			"msg":  "stop ignored",
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+		return
+	}
+
 	if OnStopReceived != nil {
 		if err := OnStopReceived(); err != nil {
 			fmt.Printf("❌ 处理中止回调失败: %v\n", err)
