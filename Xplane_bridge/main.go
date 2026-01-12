@@ -267,7 +267,10 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("创建 UDP 发送器失败: %w", err))
 	}
-	defer udpSender.Close()
+	defer func(sender *UdpSender) {
+		if err := sender.Close(); err != nil {
+		}
+	}(udpSender)
 	fmt.Printf("UDP 已连接到 %s，用于实时发送 27 个 Telemetry 字段给甲方 B。\n\n", cfg.TelemetryUDP)
 
 	// 5. 打开 CSV 文件，写表头
@@ -340,7 +343,7 @@ func main() {
 		panic(fmt.Errorf("订阅 Telemetry 失败: %w", err))
 	}
 
-	fmt.Println("订阅成功，开始接收数据（模式：单位换算 + UDP 转发 + CSV 记录）。\n")
+	fmt.Println("订阅成功，开始接收数据（模式：单位换算 + UDP 转发 + CSV 记录）。")
 
 	// 7. 主循环：每一帧 → 单位转换 → UDP → CSV
 	for sample := range ch {
