@@ -16,7 +16,8 @@ import (
 var OnTaskReceived func(task *TrainTaskRecordDetail) error
 
 // OnStopReceived 当收到甲方 A 的中止指令时触发的回调（由 main.go 注册）。
-var OnStopReceived func() error
+// stopType: 0 暂停, 1 继续, 2 冻结, 3 重置, 4 退出
+var OnStopReceived func(stopType int) error
 
 // RegisterTaskHook 供 main.go 调用，注册任务回调。
 func RegisterTaskHook(fn func(task *TrainTaskRecordDetail) error) {
@@ -24,7 +25,7 @@ func RegisterTaskHook(fn func(task *TrainTaskRecordDetail) error) {
 }
 
 // RegisterStopHook 供 main.go 调用，注册中止回调。
-func RegisterStopHook(fn func() error) {
+func RegisterStopHook(fn func(stopType int) error) {
 	OnStopReceived = fn
 }
 
@@ -207,7 +208,7 @@ func ReceiveStopHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if payload.Type != 4 {
+	if payload.Type < 0 || payload.Type > 4 {
 		w.Header().Set("Content-Type", "application/json")
 		resp := map[string]any{
 			"code": 0,
@@ -218,15 +219,17 @@ func ReceiveStopHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if OnStopReceived != nil {
-		if err := OnStopReceived(); err != nil {
+		if err := OnStopReceived(payload.Type); err != nil {
 			fmt.Printf("❌ 处理中止回调失败: %v\n", err)
 		}
 	}
 
-	if err := UploadTrainDataCSV("telemetry.csv"); err != nil {
-		fmt.Printf("❌ 上传训练数据到甲方A失败: %v\n", err)
-		http.Error(w, "upload train data failed", http.StatusInternalServerError)
-		return
+	if payload.Type == 3 || payload.Type == 4 {
+		if err := UploadTrainDataCSV("telemetry.csv"); err != nil {
+			fmt.Printf("❌ 上传训练数据到甲方A失败: %v\n", err)
+			http.Error(w, "upload train data failed", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -183,6 +183,87 @@ func (c *Client) SetDatarefValue(ctx context.Context, id int64, value any) error
 	return nil
 }
 
+// 根据名字精确查 Command，返回它的 ID
+func (c *Client) FindCommandByName(ctx context.Context, name string) (int64, error) {
+	url := fmt.Sprintf("%s/commands?filter[name]=%s&fields=id,name",
+		c.baseV2, name)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("构建请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("X-Plane 返回错误状态码: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("解析 JSON 失败: %w", err)
+	}
+
+	if len(result.Data) == 0 {
+		return 0, fmt.Errorf("没有找到 Command: %s", name)
+	}
+
+	return result.Data[0].ID, nil
+}
+
+// ExecuteCommandOnce 触发一次 X-Plane command
+func (c *Client) ExecuteCommandOnce(ctx context.Context, command string) error {
+	if strings.TrimSpace(command) == "" {
+		return fmt.Errorf("command 不能为空")
+	}
+
+	commandID, err := c.FindCommandByName(ctx, command)
+	if err != nil {
+		return err
+	}
+
+	endpoint := fmt.Sprintf("%s/command/%d/activate", c.baseAPI, commandID)
+	payload := struct {
+		Duration float64 `json:"duration"`
+	}{
+		Duration: 0,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("编码 command payload 失败: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("构建 command 请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("发送 command 请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("command 返回错误状态码: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
 // ====================== WebSocket / Telemetry 部分 ======================
 
 // SubscribeTelemetry 订阅一组 DataRef，并返回一个连续的 TelemetrySample 流。
