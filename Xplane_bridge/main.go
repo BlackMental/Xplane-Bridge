@@ -371,9 +371,24 @@ func main() {
 		return nil
 	})
 
-	Aapi.RegisterStopHook(func() error {
-		telemetryEnabled.Store(false)
-		return closeCSV()
+	Aapi.RegisterStopHook(func(stopType int) error {
+		switch stopType {
+		case 0, 2:
+			if err := client.ExecuteCommandOnce(ctx, "sim/operation/pause_on"); err != nil {
+				return fmt.Errorf("发送暂停指令失败: %w", err)
+			}
+			return nil
+		case 1:
+			if err := client.ExecuteCommandOnce(ctx, "sim/operation/pause_off"); err != nil {
+				return fmt.Errorf("发送继续指令失败: %w", err)
+			}
+			return nil
+		case 3, 4:
+			telemetryEnabled.Store(false)
+			return closeCSV()
+		default:
+			return nil
+		}
 	})
 
 	// 6. 订阅 Telemetry 数据流（10Hz）

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -180,6 +181,32 @@ func (c *Client) SetDatarefValue(ctx context.Context, id int64, value any) error
 		}
 		return fmt.Errorf("写 DataRef 返回错误状态码: %d", resp.StatusCode)
 	}
+	return nil
+}
+
+// ExecuteCommandOnce 触发一次 X-Plane command
+func (c *Client) ExecuteCommandOnce(ctx context.Context, command string) error {
+	if strings.TrimSpace(command) == "" {
+		return fmt.Errorf("command 不能为空")
+	}
+
+	endpoint := fmt.Sprintf("%s/command/once?command=%s", c.baseAPI, url.QueryEscape(command))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("构建 command 请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("发送 command 请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("command 返回错误状态码: %d", resp.StatusCode)
+	}
+
 	return nil
 }
 
