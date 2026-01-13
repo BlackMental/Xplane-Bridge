@@ -273,30 +273,73 @@ func main() {
 	}(udpSender)
 	fmt.Printf("UDP 已连接到 %s，用于实时发送 27 个 Telemetry 字段给甲方 B。\n\n", cfg.TelemetryUDP)
 
-	// 5. 打开 CSV 文件，写表头
-	csvFile, err := os.Create("telemetry.csv")
-	if err != nil {
-		panic(fmt.Errorf("创建 CSV 文件失败: %w", err))
-	}
-	defer func() {
-		_ = csvFile.Close()
-	}()
-
-	csvWriter := csv.NewWriter(csvFile)
-	defer csvWriter.Flush()
-	var csvMu sync.Mutex
+	// 5. CSV 记录器（按任务重置）
+	var (
+		csvFile   *os.File
+		csvWriter *csv.Writer
+		csvMu     sync.Mutex
+	)
 
 	// CSV 表头：timestamp_ms + 27 个字段 key
-	header := make([]string, 0, len(fields)+1)
-	header = append(header, "timestamp_ms")
-	for _, f := range fields {
-		header = append(header, f.Key)
-	}
-	if err := csvWriter.Write(header); err != nil {
-		fmt.Printf("写入 CSV 表头失败: %v\n", err)
+	buildCSVHeader := func() []string {
+		header := make([]string, 0, len(fields)+1)
+		header = append(header, "timestamp_ms")
+		for _, f := range fields {
+			header = append(header, f.Key)
+		}
+		return header
 	}
 
-	fmt.Println("CSV 记录已开启，输出文件: telemetry.csv")
+	resetCSV := func() error {
+		csvMu.Lock()
+		defer csvMu.Unlock()
+
+		if csvWriter != nil {
+			csvWriter.Flush()
+		}
+		if csvFile != nil {
+			if err := csvFile.Close(); err != nil {
+				return fmt.Errorf("关闭旧 CSV 文件失败: %w", err)
+			}
+		}
+
+		file, err := os.Create("telemetry.csv")
+		if err != nil {
+			return fmt.Errorf("创建 CSV 文件失败: %w", err)
+		}
+		writer := csv.NewWriter(file)
+		if err := writer.Write(buildCSVHeader()); err != nil {
+			_ = file.Close()
+			return fmt.Errorf("写入 CSV 表头失败: %w", err)
+		}
+		writer.Flush()
+
+		csvFile = file
+		csvWriter = writer
+
+		fmt.Println("CSV 记录已开启，输出文件: telemetry.csv")
+		return nil
+	}
+
+	closeCSV := func() error {
+		csvMu.Lock()
+		defer csvMu.Unlock()
+
+		if csvWriter != nil {
+			csvWriter.Flush()
+			if err := csvWriter.Error(); err != nil {
+				return fmt.Errorf("刷新 CSV 失败: %w", err)
+			}
+		}
+		if csvFile != nil {
+			if err := csvFile.Close(); err != nil {
+				return fmt.Errorf("关闭 CSV 文件失败: %w", err)
+			}
+		}
+		csvFile = nil
+		csvWriter = nil
+		return nil
+	}
 
 	var telemetryEnabled atomic.Bool
 	telemetryEnabled.Store(false)
@@ -312,6 +355,13 @@ func main() {
 			return fmt.Errorf("无法从任务构建场景")
 		}
 
+		if telemetryEnabled.Load() {
+			fmt.Println("⚠ 检测到任务执行中又收到新任务，将清空当前 CSV 记录并重新开始。")
+		}
+		if err := resetCSV(); err != nil {
+			return err
+		}
+
 		fmt.Printf("▶ 收到任务，应用场景（高度/姿态/时间）...\n")
 		if err := client.ApplyScenario(ctx, sc); err != nil {
 			return err
@@ -321,19 +371,24 @@ func main() {
 		return nil
 	})
 
-	Aapi.RegisterStopHook(func() error {
-		telemetryEnabled.Store(false)
-
-		csvMu.Lock()
-		defer csvMu.Unlock()
-		csvWriter.Flush()
-		if err := csvWriter.Error(); err != nil {
-			return fmt.Errorf("刷新 CSV 失败: %w", err)
+	Aapi.RegisterStopHook(func(stopType int) error {
+		switch stopType {
+		case 0, 2:
+			if err := client.ExecuteCommandOnce(ctx, "sim/operation/pause_on"); err != nil {
+				return fmt.Errorf("发送暂停指令失败: %w", err)
+			}
+			return nil
+		case 1:
+			if err := client.ExecuteCommandOnce(ctx, "sim/operation/pause_off"); err != nil {
+				return fmt.Errorf("发送继续指令失败: %w", err)
+			}
+			return nil
+		case 3, 4:
+			telemetryEnabled.Store(false)
+			return closeCSV()
+		default:
+			return nil
 		}
-		if err := csvFile.Close(); err != nil {
-			return fmt.Errorf("关闭 CSV 文件失败: %w", err)
-		}
-		return nil
 	})
 
 	// 6. 订阅 Telemetry 数据流（10Hz）
@@ -369,6 +424,10 @@ func main() {
 		}
 
 		csvMu.Lock()
+		if csvWriter == nil {
+			csvMu.Unlock()
+			continue
+		}
 		if err := csvWriter.Write(row); err != nil {
 			fmt.Printf("写入 CSV 行失败: %v\n", err)
 		}
