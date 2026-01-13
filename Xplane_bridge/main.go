@@ -12,6 +12,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -172,13 +174,26 @@ func (s *UdpSender) SendSample(sample xp.TelemetrySample) error {
 //
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "程序启动失败: %v\n", err)
+		waitForExit()
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 0. 加载配置
-	cfg, err := cfgpkg.Load("config.json")
+	exeDir, err := executableDir()
 	if err != nil {
-		panic(fmt.Errorf("加载配置失败: %w", err))
+		return fmt.Errorf("获取程序目录失败: %w", err)
+	}
+
+	// 0. 加载配置
+	cfgPath := filepath.Join(exeDir, "config.json")
+	cfg, err := cfgpkg.Load(cfgPath)
+	if err != nil {
+		return fmt.Errorf("加载配置失败: %w", err)
 	}
 
 	// 0.1 初始化甲方 B 的 HTTP 端点（替代原来的常量 URL）
@@ -198,7 +213,8 @@ func main() {
 		fmt.Printf("甲方A监听端点已启动：http://<本机IP>%s/api/fromA/task\n", cfg.HTTPFromAAddr)
 
 		if err := http.ListenAndServe(cfg.HTTPFromAAddr, handler); err != nil {
-			panic(err)
+			fmt.Fprintf(os.Stderr, "HTTP 服务启动失败: %v\n", err)
+			waitForExit()
 		}
 	}()
 
@@ -208,7 +224,7 @@ func main() {
 	// 2. 检查 Web API 能否连通
 	xCap, err := client.GetCapabilities(ctx)
 	if err != nil {
-		panic(fmt.Errorf("获取 capabilities 失败: %w", err))
+		return fmt.Errorf("获取 capabilities 失败: %w", err)
 	}
 
 	fmt.Println("X-Plane Web API 能连通 ✅")
@@ -265,7 +281,7 @@ func main() {
 	// 4. 建立 UDP 发送器（27 个字段实时推给 B），地址来自配置
 	udpSender, err := NewUdpSender(cfg.TelemetryUDP)
 	if err != nil {
-		panic(fmt.Errorf("创建 UDP 发送器失败: %w", err))
+		return fmt.Errorf("创建 UDP 发送器失败: %w", err)
 	}
 	defer func(sender *UdpSender) {
 		if err := sender.Close(); err != nil {
@@ -303,7 +319,7 @@ func main() {
 			}
 		}
 
-		file, err := os.Create("telemetry.csv")
+		file, err := os.Create(filepath.Join(exeDir, "telemetry.csv"))
 		if err != nil {
 			return fmt.Errorf("创建 CSV 文件失败: %w", err)
 		}
@@ -400,7 +416,7 @@ func main() {
 	fmt.Println("开始订阅 Telemetry 数据流...")
 	ch, err := client.SubscribeTelemetry(ctx, fields)
 	if err != nil {
-		panic(fmt.Errorf("订阅 Telemetry 失败: %w", err))
+		return fmt.Errorf("订阅 Telemetry 失败: %w", err)
 	}
 
 	fmt.Println("订阅成功，开始接收数据（模式：单位换算 + UDP 转发 + CSV 记录）。")
@@ -441,6 +457,23 @@ func main() {
 	}
 
 	fmt.Println("程序结束。")
+	return nil
+}
+
+func executableDir() (string, error) {
+	exePath, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(exePath), nil
+}
+
+func waitForExit() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	fmt.Println("按回车键退出...")
+	_, _ = fmt.Fscanln(os.Stdin)
 }
 
 // ====================== 从甲方A任务构建场景 ======================
