@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -383,6 +384,14 @@ func run() error {
 			return err
 		}
 
+		if preset, ok := weatherToPreset(task.Weather); ok {
+			if err := client.SetWeatherPreset(ctx, preset); err != nil {
+				return err
+			}
+		} else if strings.TrimSpace(task.Weather) != "" {
+			fmt.Printf("⚠ 未识别的天气类型: %s\n", task.Weather)
+		}
+
 		telemetryEnabled.Store(true)
 		return nil
 	})
@@ -502,6 +511,27 @@ func buildScenarioFromTask(t *Aapi.TrainTaskRecordDetail) *xp.ScenarioConfig {
 	sc.TimeZuluSec = timePeriodToZuluSeconds(t.TimePeriod)
 
 	return sc
+}
+
+func weatherToPreset(weather string) (int, bool) {
+	switch strings.TrimSpace(weather) {
+	case "晴空":
+		return 0, true
+	case "少云":
+		return 2, true
+	case "阴天":
+		return 4, true
+	case "多云":
+		return 3, true
+	case "小雨":
+		return 7, true
+	case "中雨":
+		return 8, true
+	case "雾天":
+		return 5, true
+	default:
+		return 0, false
+	}
 }
 
 // timePeriodToZuluSeconds：把“昼间/黄昏/夜间/拂晓/阴天”映射为一天中的秒数。
