@@ -512,16 +512,13 @@ func timePeriodToZuluSeconds(tp string) int64 {
 		return int64(5 * 3600)
 	case "黄昏":
 		// 黄昏 18:30
-		return int64(10*3600 + 30*60)
+		return int64(11 * 3600)
 	case "夜间":
 		// 夜间 23:00
-		return int64(15 * 3600)
+		return int64(13 * 3600)
 	case "拂晓":
 		// 拂晓 05:30
-		return int64(21*3600 + 30*60)
-	case "阴天":
-		// 阴天本质是天气，这里就当成一个“白天但光线偏暗”的时段，比如 10:00
-		return int64(2 * 3600)
+		return int64(20 * 3600)
 	default:
 		// 默认正午 12:00
 		return int64(6 * 3600)
