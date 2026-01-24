@@ -579,7 +579,7 @@ func buildScenarioFromTask(t *Aapi.TrainTaskRecordDetail) *xp.ScenarioConfig {
 
 const (
 	kmToStatuteMiles = 0.621371
-	windArrayIndex   = 0
+	windArrayIndex   = 2
 )
 
 func applyWeather(ctx context.Context, client *xp.Client, weather string) error {
