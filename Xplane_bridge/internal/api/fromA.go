@@ -19,6 +19,21 @@ var OnTaskReceived func(task *TrainTaskRecordDetail) error
 // stopType: 0 暂停, 1 继续, 2 冻结, 3 重置, 4 退出
 var OnStopReceived func(stopType int) error
 
+// OnWeatherReceived 当收到甲方 A 的天气变更指令时触发回调。
+var OnWeatherReceived func(weather string) error
+
+// OnTimePeriodReceived 当收到甲方 A 的时间变更指令时触发回调。
+var OnTimePeriodReceived func(timePeriod string) error
+
+// OnVisibilityReceived 当收到甲方 A 的能见度变更指令时触发回调（单位 km）。
+var OnVisibilityReceived func(visibilityKm float64) error
+
+// OnWindSpeedReceived 当收到甲方 A 的风速变更指令时触发回调。
+var OnWindSpeedReceived func(speed float64) error
+
+// OnWindDirectionReceived 当收到甲方 A 的风向变更指令时触发回调。
+var OnWindDirectionReceived func(direction float64) error
+
 // RegisterTaskHook 供 main.go 调用，注册任务回调。
 func RegisterTaskHook(fn func(task *TrainTaskRecordDetail) error) {
 	OnTaskReceived = fn
@@ -27,6 +42,31 @@ func RegisterTaskHook(fn func(task *TrainTaskRecordDetail) error) {
 // RegisterStopHook 供 main.go 调用，注册中止回调。
 func RegisterStopHook(fn func(stopType int) error) {
 	OnStopReceived = fn
+}
+
+// RegisterWeatherHook 供 main.go 调用，注册天气变更回调。
+func RegisterWeatherHook(fn func(weather string) error) {
+	OnWeatherReceived = fn
+}
+
+// RegisterTimePeriodHook 供 main.go 调用，注册时间变更回调。
+func RegisterTimePeriodHook(fn func(timePeriod string) error) {
+	OnTimePeriodReceived = fn
+}
+
+// RegisterVisibilityHook 供 main.go 调用，注册能见度变更回调（单位 km）。
+func RegisterVisibilityHook(fn func(visibilityKm float64) error) {
+	OnVisibilityReceived = fn
+}
+
+// RegisterWindSpeedHook 供 main.go 调用，注册风速变更回调。
+func RegisterWindSpeedHook(fn func(speed float64) error) {
+	OnWindSpeedReceived = fn
+}
+
+// RegisterWindDirectionHook 供 main.go 调用，注册风向变更回调。
+func RegisterWindDirectionHook(fn func(direction float64) error) {
+	OnWindDirectionReceived = fn
 }
 
 // 甲方 A 上传训练数据的 HTTP 基地址（由 main.go 注入）
@@ -236,6 +276,241 @@ func ReceiveStopHandler(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{
 		"code": 0,
 		"msg":  "stop received",
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// ReceiveWeatherHandler 接收甲方A天气变更 JSON
+func ReceiveWeatherHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(r.Body)
+
+	var payload struct {
+		Weather *string `json:"weather"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		http.Error(w, "invalid weather json", http.StatusBadRequest)
+		return
+	}
+	if payload.Weather == nil {
+		http.Error(w, "missing weather field", http.StatusBadRequest)
+		return
+	}
+
+	if OnWeatherReceived != nil {
+		if err := OnWeatherReceived(strings.TrimSpace(*payload.Weather)); err != nil {
+			fmt.Printf("❌ 处理天气回调失败: %v\n", err)
+			http.Error(w, "weather update failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]any{
+		"code": 0,
+		"msg":  "weather received",
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// ReceiveTimePeriodHandler 接收甲方A时间变更 JSON
+func ReceiveTimePeriodHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(r.Body)
+
+	var payload struct {
+		TimePeriod *string `json:"timePeriod"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		http.Error(w, "invalid timePeriod json", http.StatusBadRequest)
+		return
+	}
+	if payload.TimePeriod == nil {
+		http.Error(w, "missing timePeriod field", http.StatusBadRequest)
+		return
+	}
+
+	if OnTimePeriodReceived != nil {
+		if err := OnTimePeriodReceived(strings.TrimSpace(*payload.TimePeriod)); err != nil {
+			fmt.Printf("❌ 处理时间回调失败: %v\n", err)
+			http.Error(w, "timePeriod update failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]any{
+		"code": 0,
+		"msg":  "timePeriod received",
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// ReceiveVisibilityHandler 接收甲方A能见度变更 JSON（单位 km）
+func ReceiveVisibilityHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(r.Body)
+
+	var payload struct {
+		Visibility *float64 `json:"visibility"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		http.Error(w, "invalid visibility json", http.StatusBadRequest)
+		return
+	}
+	if payload.Visibility == nil {
+		http.Error(w, "missing visibility field", http.StatusBadRequest)
+		return
+	}
+
+	if OnVisibilityReceived != nil {
+		if err := OnVisibilityReceived(*payload.Visibility); err != nil {
+			fmt.Printf("❌ 处理能见度回调失败: %v\n", err)
+			http.Error(w, "visibility update failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]any{
+		"code": 0,
+		"msg":  "visibility received",
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// ReceiveWindSpeedHandler 接收甲方A风速变更 JSON
+func ReceiveWindSpeedHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(r.Body)
+
+	var payload struct {
+		WindSpeed *float64 `json:"windSpeed"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		http.Error(w, "invalid windSpeed json", http.StatusBadRequest)
+		return
+	}
+	if payload.WindSpeed == nil {
+		http.Error(w, "missing windSpeed field", http.StatusBadRequest)
+		return
+	}
+
+	if OnWindSpeedReceived != nil {
+		if err := OnWindSpeedReceived(*payload.WindSpeed); err != nil {
+			fmt.Printf("❌ 处理风速回调失败: %v\n", err)
+			http.Error(w, "windSpeed update failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]any{
+		"code": 0,
+		"msg":  "windSpeed received",
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// ReceiveWindDirectionHandler 接收甲方A风向变更 JSON
+func ReceiveWindDirectionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(r.Body)
+
+	var payload struct {
+		WindDirection *float64 `json:"windDirection"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		http.Error(w, "invalid windDirection json", http.StatusBadRequest)
+		return
+	}
+	if payload.WindDirection == nil {
+		http.Error(w, "missing windDirection field", http.StatusBadRequest)
+		return
+	}
+
+	if OnWindDirectionReceived != nil {
+		if err := OnWindDirectionReceived(*payload.WindDirection); err != nil {
+			fmt.Printf("❌ 处理风向回调失败: %v\n", err)
+			http.Error(w, "windDirection update failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]any{
+		"code": 0,
+		"msg":  "windDirection received",
 	}
 	_ = json.NewEncoder(w).Encode(resp)
 }

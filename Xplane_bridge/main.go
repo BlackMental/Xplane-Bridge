@@ -208,6 +208,11 @@ func run() error {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/api/fromA/task", Aapi.ReceiveTaskHandler)
 		mux.HandleFunc("/api/fromA/stop", Aapi.ReceiveStopHandler)
+		mux.HandleFunc("/api/fromA/weather", Aapi.ReceiveWeatherHandler)
+		mux.HandleFunc("/api/fromA/timePeriod", Aapi.ReceiveTimePeriodHandler)
+		mux.HandleFunc("/api/fromA/visibility", Aapi.ReceiveVisibilityHandler)
+		mux.HandleFunc("/api/fromA/windSpeed", Aapi.ReceiveWindSpeedHandler)
+		mux.HandleFunc("/api/fromA/windDirection", Aapi.ReceiveWindDirectionHandler)
 
 		handler := cors(mux)
 
@@ -409,21 +414,12 @@ func run() error {
 		}
 
 		// 2) 环境初始化：无论走哪个分支都执行（时间 / 天气）
-		zuluSec := timePeriodToZuluSeconds(task.TimePeriod)
-		if zuluSec > 0 {
-			if err := client.SetZuluTimeSec(ctx, zuluSec); err != nil {
-				fmt.Printf("⚠ 设置时间失败（不中断进程）: %v\n", err)
-			}
-		} else if strings.TrimSpace(task.TimePeriod) != "" {
-			fmt.Printf("⚠ 未识别的 timePeriod: %s\n", task.TimePeriod)
+		if err := applyTimePeriod(ctx, client, task.TimePeriod); err != nil {
+			fmt.Printf("⚠ 设置时间失败（不中断进程）: %v\n", err)
 		}
 
-		if preset, ok := weatherToPreset(task.Weather); ok {
-			if err := client.SetWeatherPreset(ctx, preset); err != nil {
-				fmt.Printf("⚠ 设置天气失败（不中断进程）: %v\n", err)
-			}
-		} else if strings.TrimSpace(task.Weather) != "" {
-			fmt.Printf("⚠ 未识别的天气类型: %s\n", task.Weather)
+		if err := applyWeather(ctx, client, task.Weather); err != nil {
+			fmt.Printf("⚠ 设置天气失败（不中断进程）: %v\n", err)
 		}
 
 		telemetryEnabled.Store(true)
@@ -453,6 +449,27 @@ func run() error {
 		default:
 			return nil
 		}
+	})
+
+	Aapi.RegisterWeatherHook(func(weather string) error {
+		return applyWeather(ctx, client, weather)
+	})
+
+	Aapi.RegisterTimePeriodHook(func(timePeriod string) error {
+		return applyTimePeriod(ctx, client, timePeriod)
+	})
+
+	Aapi.RegisterVisibilityHook(func(visibilityKm float64) error {
+		visibilitySm := visibilityKm * kmToStatuteMiles
+		return client.SetVisibilityReportedSm(ctx, visibilitySm)
+	})
+
+	Aapi.RegisterWindSpeedHook(func(speed float64) error {
+		return client.SetWindSpeedAtIndex(ctx, windArrayIndex, speed)
+	})
+
+	Aapi.RegisterWindDirectionHook(func(direction float64) error {
+		return client.SetWindDirectionAtIndex(ctx, windArrayIndex, direction)
 	})
 
 	// 6. 订阅 Telemetry 数据流（10Hz）
@@ -546,6 +563,38 @@ func buildScenarioFromTask(t *Aapi.TrainTaskRecordDetail) *xp.ScenarioConfig {
 	sc.TimeZuluSec = 0
 
 	return sc
+}
+
+const (
+	kmToStatuteMiles = 0.621371
+	windArrayIndex   = 2
+)
+
+func applyWeather(ctx context.Context, client *xp.Client, weather string) error {
+	if preset, ok := weatherToPreset(weather); ok {
+		if err := client.SetWeatherPreset(ctx, preset); err != nil {
+			return err
+		}
+		return nil
+	}
+	if strings.TrimSpace(weather) != "" {
+		return fmt.Errorf("未识别的天气类型: %s", weather)
+	}
+	return nil
+}
+
+func applyTimePeriod(ctx context.Context, client *xp.Client, timePeriod string) error {
+	zuluSec := timePeriodToZuluSeconds(timePeriod)
+	if zuluSec > 0 {
+		if err := client.SetZuluTimeSec(ctx, zuluSec); err != nil {
+			return err
+		}
+		return nil
+	}
+	if strings.TrimSpace(timePeriod) != "" {
+		return fmt.Errorf("未识别的 timePeriod: %s", timePeriod)
+	}
+	return nil
 }
 
 func weatherToPreset(weather string) (int, bool) {
