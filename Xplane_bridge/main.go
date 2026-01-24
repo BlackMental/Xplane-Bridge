@@ -197,6 +197,12 @@ func run() error {
 		return fmt.Errorf("加载配置失败: %w", err)
 	}
 
+	debugLogf := func(format string, args ...any) {
+		if cfg.Debug {
+			fmt.Printf(format, args...)
+		}
+	}
+
 	// 0.1 初始化甲方 B 的 HTTP 端点（替代原来的常量 URL）
 	Aapi.InitBEndpoints(cfg.BBaseURL)
 
@@ -461,14 +467,20 @@ func run() error {
 
 	Aapi.RegisterVisibilityHook(func(visibilityKm float64) error {
 		visibilitySm := visibilityKm * kmToStatuteMiles
+		debugLogf("🐞 能见度指令: 收到=%.3f km, 下发=%.3f sm (dataref=sim/weather/region/visibility_reported_sm)\n",
+			visibilityKm, visibilitySm)
 		return client.SetVisibilityReportedSm(ctx, visibilitySm)
 	})
 
 	Aapi.RegisterWindSpeedHook(func(speed float64) error {
+		debugLogf("🐞 风速指令: 收到=%.3f m/s, 下发=%.3f m/s (index=%d, dataref=sim/weather/region/wind_speed_msc)\n",
+			speed, speed, windArrayIndex)
 		return client.SetWindSpeedAtIndex(ctx, windArrayIndex, speed)
 	})
 
 	Aapi.RegisterWindDirectionHook(func(direction float64) error {
+		debugLogf("🐞 风向指令: 收到=%.3f°, 下发=%.3f° (index=%d, dataref=sim/weather/region/wind_direction_degt)\n",
+			direction, direction, windArrayIndex)
 		return client.SetWindDirectionAtIndex(ctx, windArrayIndex, direction)
 	})
 
@@ -567,7 +579,7 @@ func buildScenarioFromTask(t *Aapi.TrainTaskRecordDetail) *xp.ScenarioConfig {
 
 const (
 	kmToStatuteMiles = 0.621371
-	windArrayIndex   = 2
+	windArrayIndex   = 0
 )
 
 func applyWeather(ctx context.Context, client *xp.Client, weather string) error {
