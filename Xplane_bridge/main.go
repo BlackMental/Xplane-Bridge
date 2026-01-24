@@ -473,15 +473,17 @@ func run() error {
 	})
 
 	Aapi.RegisterWindSpeedHook(func(speed float64) error {
-		debugLogf("🐞 风速指令: 收到=%.3f m/s, 下发=%.3f m/s (index=%d, dataref=sim/weather/region/wind_speed_msc)\n",
-			speed, speed, windArrayIndex)
-		return client.SetWindSpeedAtIndex(ctx, windArrayIndex, speed)
+		indices := windLayerIndices()
+		debugLogf("🐞 风速指令: 收到=%.3f m/s, 下发=%.3f m/s (indices=%v, dataref=sim/weather/region/wind_speed_msc)\n",
+			speed, speed, indices)
+		return client.SetWindSpeedAtIndices(ctx, indices, speed)
 	})
 
 	Aapi.RegisterWindDirectionHook(func(direction float64) error {
-		debugLogf("🐞 风向指令: 收到=%.3f°, 下发=%.3f° (index=%d, dataref=sim/weather/region/wind_direction_degt)\n",
-			direction, direction, windArrayIndex)
-		return client.SetWindDirectionAtIndex(ctx, windArrayIndex, direction)
+		indices := windLayerIndices()
+		debugLogf("🐞 风向指令: 收到=%.3f°, 下发=%.3f° (indices=%v, dataref=sim/weather/region/wind_direction_degt)\n",
+			direction, direction, indices)
+		return client.SetWindDirectionAtIndices(ctx, indices, direction)
 	})
 
 	// 6. 订阅 Telemetry 数据流（10Hz）
@@ -578,9 +580,17 @@ func buildScenarioFromTask(t *Aapi.TrainTaskRecordDetail) *xp.ScenarioConfig {
 }
 
 const (
-	kmToStatuteMiles = 0.621371
-	windArrayIndex   = 2
+	kmToStatuteMiles   = 0.621371
+	windLayersToUpdate = 5
 )
+
+func windLayerIndices() []int {
+	indices := make([]int, windLayersToUpdate)
+	for i := 0; i < windLayersToUpdate; i++ {
+		indices[i] = i
+	}
+	return indices
+}
 
 func applyWeather(ctx context.Context, client *xp.Client, weather string) error {
 	if preset, ok := weatherToPreset(weather); ok {

@@ -84,26 +84,44 @@ func (c *Client) SetVisibilityReportedSm(ctx context.Context, visibilitySm float
 }
 
 func (c *Client) SetWindSpeedAtIndex(ctx context.Context, index int, speed float64) error {
+	return c.SetWindSpeedAtIndices(ctx, []int{index}, speed)
+}
+
+func (c *Client) SetWindSpeedAtIndices(ctx context.Context, indices []int, speed float64) error {
 	if err := c.initWeatherDatarefs(ctx); err != nil {
 		return err
 	}
+	if len(indices) == 0 {
+		return fmt.Errorf("风速索引不能为空")
+	}
 
 	return c.withImmediateWeatherUpdate(ctx, func() error {
-		if err := c.writeArrayElement(ctx, weatherDr.windSpeedID, index, speed); err != nil {
-			return fmt.Errorf("写入风速失败: %w", err)
+		for _, index := range indices {
+			if err := c.writeArrayElement(ctx, weatherDr.windSpeedID, index, speed); err != nil {
+				return fmt.Errorf("写入风速失败(index=%d): %w", index, err)
+			}
 		}
 		return nil
 	})
 }
 
 func (c *Client) SetWindDirectionAtIndex(ctx context.Context, index int, direction float64) error {
+	return c.SetWindDirectionAtIndices(ctx, []int{index}, direction)
+}
+
+func (c *Client) SetWindDirectionAtIndices(ctx context.Context, indices []int, direction float64) error {
 	if err := c.initWeatherDatarefs(ctx); err != nil {
 		return err
 	}
+	if len(indices) == 0 {
+		return fmt.Errorf("风向索引不能为空")
+	}
 
 	return c.withImmediateWeatherUpdate(ctx, func() error {
-		if err := c.writeArrayElement(ctx, weatherDr.windDirectionID, index, direction); err != nil {
-			return fmt.Errorf("写入风向失败: %w", err)
+		for _, index := range indices {
+			if err := c.writeArrayElement(ctx, weatherDr.windDirectionID, index, direction); err != nil {
+				return fmt.Errorf("写入风向失败(index=%d): %w", index, err)
+			}
 		}
 		return nil
 	})
