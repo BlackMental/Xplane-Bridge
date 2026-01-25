@@ -102,3 +102,11 @@ func BuildSessionCompleteRequest() SessionCompleteRequest {
 		Reason: "stop",
 	}
 }
+
+// ===== 甲方A -> 中间件：特情条件触发 =====
+
+// FailureRequest 甲方A触发特情条件的请求体（单对象）。
+type FailureRequest struct {
+	FailureField string  `json:"failure_field"`
+	Param        float64 `json:"param"`
+}

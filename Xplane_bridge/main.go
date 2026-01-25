@@ -219,6 +219,7 @@ func run() error {
 		mux.HandleFunc("/api/fromA/visibility", Aapi.ReceiveVisibilityHandler)
 		mux.HandleFunc("/api/fromA/windSpeed", Aapi.ReceiveWindSpeedHandler)
 		mux.HandleFunc("/api/fromA/windDirection", Aapi.ReceiveWindDirectionHandler)
+		mux.HandleFunc("/api/fromA/failure", Aapi.ReceiveFailureHandler)
 
 		handler := cors(mux)
 
@@ -233,6 +234,10 @@ func run() error {
 	// 1. 创建 X-Plane 客户端（地址从配置中读取）
 	client := xp.NewClient(cfg.XPlaneBaseURL)
 	client.SetDebug(cfg.Debug)
+
+	Aapi.RegisterFailureHook(func(req Aapi.FailureRequest) error {
+		return client.SetDatarefValueByName(ctx, req.FailureField, req.Param)
+	})
 
 	// 2. 检查 Web API 能否连通
 	xCap, err := client.GetCapabilities(ctx)
