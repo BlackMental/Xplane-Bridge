@@ -248,6 +248,18 @@ func (c *Client) SetDatarefValue(ctx context.Context, id int64, value any) error
 	return nil
 }
 
+// SetDatarefValueByName 通过 DataRef 名称写值（内部先查 ID）。
+func (c *Client) SetDatarefValueByName(ctx context.Context, name string, value any) error {
+	id, err := c.FindDatarefByName(ctx, name)
+	if err != nil {
+		return fmt.Errorf("查找 DataRef 失败: %w", err)
+	}
+	if err := c.SetDatarefValue(ctx, id, value); err != nil {
+		return fmt.Errorf("写 DataRef 失败: %w", err)
+	}
+	return nil
+}
+
 // 根据名字精确查 Command，返回它的 ID
 // 根据名字精确查 Command，返回它的 ID
 func (c *Client) FindCommandByName(ctx context.Context, name string) (int64, error) {

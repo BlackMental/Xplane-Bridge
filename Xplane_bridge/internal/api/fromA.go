@@ -34,6 +34,9 @@ var OnWindSpeedReceived func(speed float64) error
 // OnWindDirectionReceived 当收到甲方 A 的风向变更指令时触发回调。
 var OnWindDirectionReceived func(direction float64) error
 
+// OnFailureReceived 当收到甲方 A 的特情触发指令时触发回调。
+var OnFailureReceived func(req FailureRequest) error
+
 // RegisterTaskHook 供 main.go 调用，注册任务回调。
 func RegisterTaskHook(fn func(task *TrainTaskRecordDetail) error) {
 	OnTaskReceived = fn
@@ -67,6 +70,11 @@ func RegisterWindSpeedHook(fn func(speed float64) error) {
 // RegisterWindDirectionHook 供 main.go 调用，注册风向变更回调。
 func RegisterWindDirectionHook(fn func(direction float64) error) {
 	OnWindDirectionReceived = fn
+}
+
+// RegisterFailureHook 供 main.go 调用，注册特情触发回调。
+func RegisterFailureHook(fn func(req FailureRequest) error) {
+	OnFailureReceived = fn
 }
 
 // 甲方 A 上传训练数据的 HTTP 基地址（由 main.go 注入）
@@ -511,6 +519,52 @@ func ReceiveWindDirectionHandler(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{
 		"code": 0,
 		"msg":  "windDirection received",
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// ReceiveFailureHandler 接收甲方A特情触发 JSON（单对象）
+func ReceiveFailureHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(r.Body)
+
+	var payload FailureRequest
+	if err := json.Unmarshal(body, &payload); err != nil {
+		http.Error(w, "invalid failure json", http.StatusBadRequest)
+		return
+	}
+	payload.FailureField = strings.TrimSpace(payload.FailureField)
+	if payload.FailureField == "" {
+		http.Error(w, "missing failure_field field", http.StatusBadRequest)
+		return
+	}
+
+	if OnFailureReceived != nil {
+		if err := OnFailureReceived(payload); err != nil {
+			fmt.Printf("❌ 处理特情回调失败: %v\n", err)
+			http.Error(w, "failure update failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]any{
+		"code": 0,
+		"msg":  "failure received",
 	}
 	_ = json.NewEncoder(w).Encode(resp)
 }
