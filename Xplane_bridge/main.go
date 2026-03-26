@@ -208,6 +208,7 @@ func run() error {
 
 	// 0.2 初始化甲方 A 的上传端点
 	Aapi.InitAUploadEndpoint(cfg.AUploadBaseURL)
+	Aapi.InitEyeGazeCSVDir(cfg.EyeGazeCSVDir)
 
 	// ================= HTTP Server for 甲方A ===================
 	go func() {
@@ -408,6 +409,10 @@ func run() error {
 			return err
 		}
 
+		if err := client.ExecuteCommandOnce(ctx, "project/eye_gaze/toggle_record_pause"); err != nil {
+			return fmt.Errorf("发送眼动开始记录指令失败: %w", err)
+		}
+
 		fmt.Printf("▶ 收到任务，开始初始化 X-Plane（位置 + 环境）...\n")
 
 		// 1) 位置初始化：二选一
@@ -473,7 +478,13 @@ func run() error {
 			return nil
 		case 4:
 			telemetryEnabled.Store(false)
-			return closeCSV()
+			if err := closeCSV(); err != nil {
+				return err
+			}
+			if err := client.ExecuteCommandOnce(ctx, "project/eye_gaze/finish_recording"); err != nil {
+				return fmt.Errorf("发送眼动结束记录指令失败: %w", err)
+			}
+			return nil
 		default:
 			return nil
 		}
