@@ -208,6 +208,7 @@ func run() error {
 
 	// 0.2 初始化甲方 A 的上传端点
 	Aapi.InitAUploadEndpoint(cfg.AUploadBaseURL)
+	Aapi.InitEyeGazeCSVDir(cfg.EyeGazeCSVDir)
 
 	// ================= HTTP Server for 甲方A ===================
 	go func() {

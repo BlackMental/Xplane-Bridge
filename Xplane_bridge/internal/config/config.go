@@ -26,6 +26,9 @@ type Config struct {
 
 	// ✅ 新增：调试开关（true 时打印 command 调用的 HTTP 状态码与响应体）
 	Debug bool `json:"debug"`
+
+	// 眼动 CSV 文件所在目录（文件名固定为 openxr_eye_gaze.csv）
+	EyeGazeCSVDir string `json:"eyeGazeCsvDir"`
 }
 
 // Load 从指定路径加载配置文件（JSON）
@@ -56,6 +59,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.AUploadBaseURL == "" {
 		return nil, fmt.Errorf("配置 aUploadBaseUrl 不能为空")
+	}
+	if cfg.EyeGazeCSVDir == "" {
+		return nil, fmt.Errorf("配置 eyeGazeCsvDir 不能为空")
 	}
 
 	return &cfg, nil
