@@ -99,7 +99,10 @@ func InitAUploadEndpoint(base string) {
 
 // InitEyeGazeCSVDir 供 main.go 调用，初始化眼动 CSV 目录。
 func InitEyeGazeCSVDir(dir string) {
-	eyeGazeCSVDir = strings.TrimSpace(dir)
+	raw := strings.TrimSpace(dir)
+	// 兼容 Windows 场景：即使配置里使用 "/"，也可被归一化处理。
+	eyeGazeCSVDir = filepath.Clean(filepath.FromSlash(raw))
+	fmt.Printf("👁️ 眼动 CSV 目录已配置: raw=%q, normalized=%q\n", raw, eyeGazeCSVDir)
 }
 
 // CurrentTask 当前任务挂在这里，给其他地方用
@@ -197,6 +200,7 @@ func UploadEyeGazeCSV() error {
 	taskID := CurrentTask.TaskID
 	userNumber := CurrentTask.UserNumber
 	csvPath := filepath.Join(eyeGazeCSVDir, eyeGazeCSVFileName)
+	fmt.Printf("📤 准备上传眼动 CSV: %s\n", csvPath)
 
 	f, err := os.Open(csvPath)
 	if err != nil {
@@ -362,16 +366,21 @@ func ReceiveStopHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if payload.Type == 4 {
+		fmt.Println("🧾 [stop=4] 准备上传飞参 CSV ...")
 		if err := UploadTrainDataCSV("telemetry.csv"); err != nil {
 			fmt.Printf("❌ 上传训练数据到甲方A失败: %v\n", err)
 			http.Error(w, "upload train data failed", http.StatusInternalServerError)
 			return
 		}
+		fmt.Println("✅ [stop=4] 飞参 CSV 上传成功。")
+
+		fmt.Println("🧾 [stop=4] 准备上传眼动 CSV ...")
 		if err := UploadEyeGazeCSV(); err != nil {
 			fmt.Printf("❌ 上传眼动数据到甲方A失败: %v\n", err)
 			http.Error(w, "upload eye gaze data failed", http.StatusInternalServerError)
 			return
 		}
+		fmt.Println("✅ [stop=4] 眼动 CSV 上传成功。")
 	}
 
 	w.Header().Set("Content-Type", "application/json")
