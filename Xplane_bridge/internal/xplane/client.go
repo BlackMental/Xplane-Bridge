@@ -326,15 +326,11 @@ func (c *Client) ExecuteCommandOnce(ctx context.Context, command string) error {
 }
 
 // ExecuteCommandByIDOnce 通过已知 command ID 触发一次 command。
-// commandName 仅用于日志与错误信息，可传空字符串。
-func (c *Client) ExecuteCommandByIDOnce(ctx context.Context, commandID int64, commandName string) error {
-	status, body, err := c.ExecuteCommandByIDOnceDebug(ctx, commandID, commandName)
+func (c *Client) ExecuteCommandByIDOnce(ctx context.Context, commandID int64) error {
+	status, body, err := c.ExecuteCommandByIDOnceDebug(ctx, commandID, "")
 
 	if c.debug {
-		displayName := strings.TrimSpace(commandName)
-		if displayName == "" {
-			displayName = fmt.Sprintf("id=%d", commandID)
-		}
+		displayName := fmt.Sprintf("id=%d", commandID)
 		trimmed := strings.TrimSpace(body)
 		if err != nil {
 			fmt.Printf("🧪 [Command Debug] %s -> HTTP %d, err=%v\n", displayName, status, err)
