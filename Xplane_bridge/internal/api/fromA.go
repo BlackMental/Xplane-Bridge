@@ -87,11 +87,19 @@ func RegisterInstructorActionHook(fn func(param int) error) {
 
 // 甲方 A 上传训练数据的 HTTP 基地址（由 main.go 注入）
 var aUploadBaseURL string
+var eyeGazeCSVDir string
+
+const eyeGazeCSVFileName = "openxr_eye_gaze.csv"
 
 // InitAUploadEndpoint 供 main.go 调用，初始化甲方 A 上传地址
 func InitAUploadEndpoint(base string) {
 	// 顺手把结尾的 / 去掉，避免重复 //
 	aUploadBaseURL = strings.TrimRight(base, "/")
+}
+
+// InitEyeGazeCSVDir 供 main.go 调用，初始化眼动 CSV 目录。
+func InitEyeGazeCSVDir(dir string) {
+	eyeGazeCSVDir = strings.TrimSpace(dir)
 }
 
 // CurrentTask 当前任务挂在这里，给其他地方用
@@ -170,6 +178,79 @@ func UploadTrainDataCSV(csvPath string) error {
 	}
 
 	fmt.Println("✅ 已成功将训练数据 CSV 上传给甲方A。")
+	return nil
+}
+
+// UploadEyeGazeCSV 在任务结束时，把 openxr_eye_gaze.csv 上传给甲方 A。
+// 会使用 CurrentTask 中的 taskId 和 userNumber 作为 query 参数。
+func UploadEyeGazeCSV() error {
+	if CurrentTask == nil {
+		return fmt.Errorf("CurrentTask 为空，无法上传眼动数据")
+	}
+	if aUploadBaseURL == "" {
+		return fmt.Errorf("甲方A上传地址未初始化（aUploadBaseUrl 为空）")
+	}
+	if eyeGazeCSVDir == "" {
+		return fmt.Errorf("眼动 CSV 目录未初始化（eyeGazeCsvDir 为空）")
+	}
+
+	taskID := CurrentTask.TaskID
+	userNumber := CurrentTask.UserNumber
+	csvPath := filepath.Join(eyeGazeCSVDir, eyeGazeCSVFileName)
+
+	f, err := os.Open(csvPath)
+	if err != nil {
+		return fmt.Errorf("打开眼动 CSV 文件失败: %w", err)
+	}
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+
+		}
+	}(f)
+
+	url := fmt.Sprintf("%s/flightSimulationTraining/uploadEyeGazeData?taskId=%d&userNumber=%s",
+		aUploadBaseURL, taskID, userNumber)
+
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+
+	part, err := writer.CreateFormFile("file", filepath.Base(csvPath))
+	if err != nil {
+		return fmt.Errorf("创建眼动上传表单文件字段失败: %w", err)
+	}
+
+	if _, err := io.Copy(part, f); err != nil {
+		return fmt.Errorf("写入眼动表单文件内容失败: %w", err)
+	}
+
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("关闭眼动 multipart writer 失败: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, &buf)
+	if err != nil {
+		return fmt.Errorf("构造眼动上传请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("请求甲方A眼动上传接口失败: %w", err)
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(resp.Body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("甲方A眼动上传返回错误: status=%s, body=%s", resp.Status, string(body))
+	}
+
+	fmt.Printf("✅ 已成功将眼动数据 CSV 上传给甲方A：%s\n", csvPath)
 	return nil
 }
 
@@ -284,6 +365,11 @@ func ReceiveStopHandler(w http.ResponseWriter, r *http.Request) {
 		if err := UploadTrainDataCSV("telemetry.csv"); err != nil {
 			fmt.Printf("❌ 上传训练数据到甲方A失败: %v\n", err)
 			http.Error(w, "upload train data failed", http.StatusInternalServerError)
+			return
+		}
+		if err := UploadEyeGazeCSV(); err != nil {
+			fmt.Printf("❌ 上传眼动数据到甲方A失败: %v\n", err)
+			http.Error(w, "upload eye gaze data failed", http.StatusInternalServerError)
 			return
 		}
 	}
