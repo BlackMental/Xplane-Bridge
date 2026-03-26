@@ -376,11 +376,10 @@ func ReceiveStopHandler(w http.ResponseWriter, r *http.Request) {
 
 		fmt.Println("🧾 [stop=4] 准备上传眼动 CSV ...")
 		if err := UploadEyeGazeCSV(); err != nil {
-			fmt.Printf("❌ 上传眼动数据到甲方A失败: %v\n", err)
-			http.Error(w, "upload eye gaze data failed", http.StatusInternalServerError)
-			return
+			fmt.Printf("⚠ 上传眼动数据到甲方A失败（不影响飞参上传回执）: %v\n", err)
+		} else {
+			fmt.Println("✅ [stop=4] 眼动 CSV 上传成功。")
 		}
-		fmt.Println("✅ [stop=4] 眼动 CSV 上传成功。")
 	}
 
 	w.Header().Set("Content-Type", "application/json")
