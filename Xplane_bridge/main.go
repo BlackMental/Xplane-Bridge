@@ -408,6 +408,9 @@ func run() error {
 		if err := resetCSV(); err != nil {
 			return err
 		}
+		if err := client.ExecuteCommandOnce(ctx, "project/eye_gaze/toggle_record_pause"); err != nil {
+			return fmt.Errorf("发送眼动开始记录指令失败: %w", err)
+		}
 
 		fmt.Println("👁️ [任务开始] 准备发送眼动开始记录指令: project/eye_gaze/toggle_record_pause")
 		if err := client.ExecuteCommandOnce(ctx, "project/eye_gaze/toggle_record_pause"); err != nil {
