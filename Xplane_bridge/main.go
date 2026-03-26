@@ -208,6 +208,7 @@ func run() error {
 
 	// 0.2 初始化甲方 A 的上传端点
 	Aapi.InitAUploadEndpoint(cfg.AUploadBaseURL)
+	Aapi.InitEyeGazeCSVDir(cfg.EyeGazeCSVDir)
 
 	// ================= HTTP Server for 甲方A ===================
 	go func() {
@@ -408,6 +409,22 @@ func run() error {
 			return err
 		}
 
+		startEyeCmd := "project/eye_gaze/toggle_record_pause"
+		fmt.Printf("👁️ [任务开始] 准备查询眼动开始记录指令ID: %s\n", startEyeCmd)
+		startEyeCmdID, err := client.FindCommandByName(ctx, startEyeCmd)
+		if err != nil {
+			fmt.Printf("❌ [任务开始] 查询眼动开始记录指令ID失败: %v\n", err)
+			return fmt.Errorf("查询眼动开始记录指令ID失败: %w", err)
+		}
+		fmt.Printf("🔎 [任务开始] 眼动开始记录指令ID=%d\n", startEyeCmdID)
+
+		fmt.Println("👁️ [任务开始] 准备发送眼动开始记录指令...")
+		if err := client.ExecuteCommandByIDOnce(ctx, startEyeCmdID, startEyeCmd); err != nil {
+			fmt.Printf("❌ [任务开始] 眼动开始记录指令发送失败: %v\n", err)
+			return fmt.Errorf("发送眼动开始记录指令失败: %w", err)
+		}
+		fmt.Println("✅ [任务开始] 眼动开始记录指令发送成功。")
+
 		fmt.Printf("▶ 收到任务，开始初始化 X-Plane（位置 + 环境）...\n")
 
 		// 1) 位置初始化：二选一
@@ -472,6 +489,21 @@ func run() error {
 			}
 			return nil
 		case 4:
+			finishEyeCmd := "project/eye_gaze/finish_recording"
+			fmt.Printf("👁️ [任务结束] 准备查询眼动结束记录指令ID: %s\n", finishEyeCmd)
+			finishEyeCmdID, err := client.FindCommandByName(ctx, finishEyeCmd)
+			if err != nil {
+				fmt.Printf("❌ [任务结束] 查询眼动结束记录指令ID失败: %v\n", err)
+				return fmt.Errorf("查询眼动结束记录指令ID失败: %w", err)
+			}
+			fmt.Printf("🔎 [任务结束] 眼动结束记录指令ID=%d\n", finishEyeCmdID)
+
+			fmt.Println("👁️ [任务结束] 准备发送眼动结束记录指令...")
+			if err := client.ExecuteCommandByIDOnce(ctx, finishEyeCmdID, finishEyeCmd); err != nil {
+				fmt.Printf("❌ [任务结束] 眼动结束记录指令发送失败: %v\n", err)
+				return fmt.Errorf("发送眼动结束记录指令失败: %w", err)
+			}
+			fmt.Println("✅ [任务结束] 眼动结束记录指令发送成功。")
 			telemetryEnabled.Store(false)
 			return closeCSV()
 		default:

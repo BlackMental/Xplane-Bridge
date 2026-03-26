@@ -325,6 +325,33 @@ func (c *Client) ExecuteCommandOnce(ctx context.Context, command string) error {
 	return err
 }
 
+// ExecuteCommandByIDOnce 通过已知 command ID 触发一次 command。
+// commandName 仅用于日志与错误信息，可传空字符串。
+func (c *Client) ExecuteCommandByIDOnce(ctx context.Context, commandID int64, commandName string) error {
+	status, body, err := c.ExecuteCommandByIDOnceDebug(ctx, commandID, commandName)
+
+	if c.debug {
+		displayName := strings.TrimSpace(commandName)
+		if displayName == "" {
+			displayName = fmt.Sprintf("id=%d", commandID)
+		}
+		trimmed := strings.TrimSpace(body)
+		if err != nil {
+			fmt.Printf("🧪 [Command Debug] %s -> HTTP %d, err=%v\n", displayName, status, err)
+			if trimmed != "" {
+				fmt.Printf("🧪 [Command Debug Body] %s\n", trimmed)
+			}
+		} else {
+			fmt.Printf("🧪 [Command Debug] %s -> HTTP %d\n", displayName, status)
+			if trimmed != "" {
+				fmt.Printf("🧪 [Command Debug Body] %s\n", trimmed)
+			}
+		}
+	}
+
+	return err
+}
+
 // ExecuteCommandOnceDebug 触发一次 X-Plane command，并返回 HTTP 状态码与响应体（用于调试）。
 // ✅ 注意：activate 必须走 /api/v2/command/{id}/activate
 func (c *Client) ExecuteCommandOnceDebug(ctx context.Context, command string) (int, string, error) {
@@ -336,6 +363,14 @@ func (c *Client) ExecuteCommandOnceDebug(ctx context.Context, command string) (i
 	commandID, err := c.FindCommandByName(ctx, command)
 	if err != nil {
 		return 0, "", err
+	}
+	return c.ExecuteCommandByIDOnceDebug(ctx, commandID, command)
+}
+
+// ExecuteCommandByIDOnceDebug 通过 command ID 触发一次 command，并返回 HTTP 状态码与响应体（用于调试）。
+func (c *Client) ExecuteCommandByIDOnceDebug(ctx context.Context, commandID int64, commandName string) (int, string, error) {
+	if commandID <= 0 {
+		return 0, "", fmt.Errorf("commandID 非法: %d", commandID)
 	}
 
 	endpoint := fmt.Sprintf("%s/command/%d/activate", c.baseV2, commandID)
@@ -375,8 +410,13 @@ func (c *Client) ExecuteCommandOnceDebug(ctx context.Context, command string) (i
 		}
 		_ = json.Unmarshal(raw, &errResp)
 
+		displayName := strings.TrimSpace(commandName)
+		if displayName == "" {
+			displayName = fmt.Sprintf("id=%d", commandID)
+		}
+
 		return resp.StatusCode, respBody, &CommandInvokeError{
-			Command:      command,
+			Command:      displayName,
 			StatusCode:   resp.StatusCode,
 			ErrorCode:    errResp.ErrorCode,
 			ErrorMessage: errResp.ErrorMessage,
