@@ -1,9 +1,0 @@
-{
-  "httpFromAAddr": ":32088",
-  "xplaneBaseUrl": "http://localhost:8086",
-  "telemetryUdpTarget": "192.168.1.159:6666",
-  "bBaseUrl": "http://192.168.1.159:17040",
-  "aUploadBaseUrl": "http://192.168.1.159:10001",
-  "debug": true,
-  "eyeGazeCsvDir": "C:\\Xplane12.4.0\\Aircraft\\CJ-6\\plugins\\CJ-6-SASL\\data\\modules\\resources\\csv"
-}
